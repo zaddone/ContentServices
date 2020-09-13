@@ -9,12 +9,15 @@ import(
 	"time"
 	"regexp"
 	"github.com/PuerkitoBio/goquery"
+	"ContentServices/content"
 )
 var (
 	regG = regexp.MustCompile("解说|福利|色情")
 	regM = regexp.MustCompile(`[0-9]+`)
 	regS = regexp.MustCompile(`\S+\$\S+\.m3u8`)
-	//rootUrl = "http://www.okzyw.com"
+
+	regT *regexp.Regexp = regexp.MustCompile(`[0-9|a-z|A-Z|\p{Han}]+`)
+	regK *regexp.Regexp = regexp.MustCompile(`[0-9a-zA-Z]+|\p{Han}`)
 )
 
 func getPageList(page int,readPage func(string,string)error)error{
@@ -60,54 +63,55 @@ func getPageList(page int,readPage func(string,string)error)error{
 
 }
 
-func NewContentZyw(t,c string,w []string) (co *Content,err error) {
-	co = &Content{
+func NewContentZyw(t,c string,w []string) (co *content.Content,err error) {
+	co = &content.Content{
 		Title:t,
 		Content:c,
 		Site:"video",
 		Type:2,
 		Update:time.Now().Unix(),
-		words:w,
+		//words:w,
 	}
+	co.SetWord(w)
 	//err = co.setWords()
 	//if err != nil {
 	//	return nil,err
 	//}
-	co.setId(strings.Join(co.words,""))
+	co.SetId(strings.Join(co.GetWords(),""))
 	return
 
 }
-func getTitleKey(t string,h func(string))error{
-
-	ts := regK.FindAllString(t,-1)
-	key := map[string]bool{}
-	for i,k := range ts {
-		key[k] = true
-		for _,k_ := range ts[(i+1):] {
-			k += k_
-			key[k]= true
-		}
-	}
-	if len(key) == 0 {
-		return nil
-	}
-	return openDB(wordsFileDB,false,func(t *bolt.Tx)error{
-		b:= t.Bucket(wordDB)
-		if b == nil {
-			return fmt.Errorf("bucket is nil")
-		}
-		for k,_ := range key {
-			v := b.Get([]byte(k))
-			if v != nil {
-				h(k)
-				//ks = append(ks,k)
-			}
-		}
-		return nil
-	})
-
-
-}
+//func getTitleKey(t string,h func(string))error{
+//
+//	ts := regK.FindAllString(t,-1)
+//	key := map[string]bool{}
+//	for i,k := range ts {
+//		key[k] = true
+//		for _,k_ := range ts[(i+1):] {
+//			k += k_
+//			key[k]= true
+//		}
+//	}
+//	if len(key) == 0 {
+//		return nil
+//	}
+//	return openDB(wordsFileDB,false,func(t *bolt.Tx)error{
+//		b:= t.Bucket(wordDB)
+//		if b == nil {
+//			return fmt.Errorf("bucket is nil")
+//		}
+//		for k,_ := range key {
+//			v := b.Get([]byte(k))
+//			if v != nil {
+//				h(k)
+//				//ks = append(ks,k)
+//			}
+//		}
+//		return nil
+//	})
+//
+//
+//}
 func getPage(url string,h func(interface{}) error )error{
 
 	res,err := http.Get("http://okzyw.com"+url)
@@ -163,21 +167,21 @@ func runRead() error {
 		coo := 0
 		err := getPageList(page,func(name,uri string)error{
 			err :=  getPage(uri,func(c interface{})error{
-				con := c.(*Content)
+				con := c.(*content.Content)
 				con.Title = name
 				//fmt.Println(con.Title)
-				err := con.saveWithDB(false,func(c_ *Content,b *bolt.Bucket)error{
+				err := con.SaveWithDB(false,func(c_ *content.Content,b *bolt.Bucket)error{
 					if len(con.Content) != len(c_.Content) {
 						fmt.Println(con.Title,c_.Title)
-						err := con.savedb(b)
+						err := con.Savedb(b)
 						if err != nil {
 							return err
 						}
-						getTitleKey(con.Title,func(w string){
-							con.words = append(con.words,w)
+						content.GetWordsKey(con.Title,func(w string){
+							con.SetWord(append(con.GetWords(),w))
 							//keyMap[w]=true
 						})
-						err = con.addSame()
+						err = con.AddSame()
 						if err != nil {
 							return err
 						}
@@ -192,13 +196,13 @@ func runRead() error {
 				}
 				fmt.Println(con.Title)
 
-				err = con.addSame()
+				err = con.AddSame()
 				if err != nil {
 					//return err
 					fmt.Println(err)
 				}
 				if err == nil {
-					return con.saveWordsWithDB()
+					return con.SaveWordsWithDB()
 				}
 				return err
 			})

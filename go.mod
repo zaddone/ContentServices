@@ -11,4 +11,6 @@ require (
 	github.com/stamblerre/gocode v1.0.0 // indirect
 	github.com/zaddone/studySystem/request v0.0.0-20200903083228-3a03714e415d
 	golang.org/x/tools v0.0.0-20200903005429-2364a5e8fdcf // indirect
+	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
+	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df // indirect
 )

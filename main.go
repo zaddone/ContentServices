@@ -3,7 +3,7 @@ import (
 	"fmt"
 	"io"
 	"time"
-	//"io/ioutil"
+	"io/ioutil"
 	"net/url"
 	"net/http"
 	"encoding/json"
@@ -11,29 +11,39 @@ import (
 	"github.com/lunny/html2md"
 	"github.com/gin-gonic/gin"
 	"flag"
+	"strings"
+	"ContentServices/content"
 )
 var (
 	Router  = gin.Default()
 	searchzhihuUrl *url.URL
 	port = flag.String("p","8080","port")
+	Sleep = flag.Int("s",600,"port")
 )
+func NewContentZhihu(t,c,a string) (co *content.Content,err error) {
+	co = &content.Content{
+		Title:t,
+		Content:c,
+		Author:a,
+		Site:"zhihu",
+		Type:1,
+		Update:time.Now().Unix(),
+	}
+	err = co.SetWords()
+	if err != nil {
+		return nil,err
+	}
+	co.SetId(strings.Join(co.GetWords(),""))
+	return
+}
 
 func init(){
-	flag.Parse()
+	//flag.Parse()
 	var err error
 	searchzhihuUrl,err = url.Parse("https://api.zhihu.com/search_v3?advert_count=0&correction=1&lc_idx=0&limit=20&offset=20&q=%E5%9B%B4%E6%A3%8B&show_all_topics=0&t=general")
 	if err != nil {
 		panic(err)
 	}
-	Router.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK,gin.H{"msg":"success"})
-	})
-	//Router.POST("/update", func(c *gin.Context) {
-	//	db, err := ioutil.ReadAll(c.Request.Body)
-	//	if err != nil {
-	//		panic(err)
-	//	}
-	//})
 	Router.GET("/up", func(c *gin.Context) {
 		err = run()
 		if err != nil {
@@ -44,18 +54,7 @@ func init(){
 		}
 		c.JSON(http.StatusOK,gin.H{"msg":"success"})
 	})
-	Router.GET("/search", func(c *gin.Context) {
-		var li []interface{}
-		err := searchWithWords(c.Query("q"),20,func(o interface{}){
-			li = append(li,o)
-		})
-		if err != nil {
-			fmt.Println(err)
-			c.JSON(http.StatusNotFound,err)
-			return
-		}
-		c.JSON(http.StatusOK,li)
-	})
+
 	go Router.Run(":"+*port)
 	//return
 	go func () {
@@ -128,17 +127,17 @@ func searchZhihu(word string,h func(interface{}))error{
 			if err != nil {
 				fmt.Println(err)
 			}
-			err = c.saveWithDB(false,nil)
+			err = c.SaveWithDB(false,nil)
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
-			err = c.addSame()
+			err = c.AddSame()
 			if err != nil {
 				fmt.Println(err)
 			}
-			fmt.Println(c.showId(),c.words)
-			err = c.saveWordsWithDB()
+			//fmt.Println(c.showId(),c.words)
+			err = c.SaveWordsWithDB()
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -180,7 +179,7 @@ func run()error{
 	return hotZhihu(func(words interface{}){
 		fmt.Println(words)
 		err :=  searchZhihu(words.(string),func(db interface{}){
-			fmt.Println(db.(*Content).Title)
+			fmt.Println(db.(*content.Content).Title)
 		})
 		if err != nil {
 			panic(err)
