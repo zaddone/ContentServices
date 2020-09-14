@@ -63,7 +63,7 @@ func getPageList(page int,readPage func(string,string)error)error{
 
 }
 
-func NewContentZyw(t,c string,w []string) (co *content.Content,err error) {
+func NewContentZyw(t,c string,w []string) (co *content.Content) {
 	co = &content.Content{
 		Title:t,
 		Content:c,
@@ -73,45 +73,11 @@ func NewContentZyw(t,c string,w []string) (co *content.Content,err error) {
 		//words:w,
 	}
 	co.SetWord(w)
-	//err = co.setWords()
-	//if err != nil {
-	//	return nil,err
-	//}
 	co.SetId(strings.Join(co.GetWords(),""))
 	return
 
 }
-//func getTitleKey(t string,h func(string))error{
-//
-//	ts := regK.FindAllString(t,-1)
-//	key := map[string]bool{}
-//	for i,k := range ts {
-//		key[k] = true
-//		for _,k_ := range ts[(i+1):] {
-//			k += k_
-//			key[k]= true
-//		}
-//	}
-//	if len(key) == 0 {
-//		return nil
-//	}
-//	return openDB(wordsFileDB,false,func(t *bolt.Tx)error{
-//		b:= t.Bucket(wordDB)
-//		if b == nil {
-//			return fmt.Errorf("bucket is nil")
-//		}
-//		for k,_ := range key {
-//			v := b.Get([]byte(k))
-//			if v != nil {
-//				h(k)
-//				//ks = append(ks,k)
-//			}
-//		}
-//		return nil
-//	})
-//
-//
-//}
+
 func getPage(url string,h func(interface{}) error )error{
 
 	res,err := http.Get("http://okzyw.com"+url)
@@ -154,10 +120,7 @@ func getPage(url string,h func(interface{}) error )error{
 		//fmt.Println(tt)
 		return fmt.Errorf("find Not vod")
 	}
-	cont,err := NewContentZyw(Title,strings.Join(vod,"|"),key)
-	if err != nil {
-		return err
-	}
+	cont := NewContentZyw(Title,strings.Join(vod,"|"),key)
 	return h(cont)
 
 }
@@ -170,6 +133,7 @@ func runRead() error {
 				con := c.(*content.Content)
 				con.Title = name
 				//fmt.Println(con.Title)
+				//return PostUpdate(con)
 				err := con.SaveWithDB(false,func(c_ *content.Content,b *bolt.Bucket)error{
 					if len(con.Content) != len(c_.Content) {
 						fmt.Println(con.Title,c_.Title)
@@ -182,6 +146,10 @@ func runRead() error {
 							//keyMap[w]=true
 						})
 						err = con.AddSame()
+						if err != nil {
+							return err
+						}
+						err = con.SaveWordsWithDB()
 						if err != nil {
 							return err
 						}
@@ -201,10 +169,7 @@ func runRead() error {
 					//return err
 					fmt.Println(err)
 				}
-				if err == nil {
-					return con.SaveWordsWithDB()
-				}
-				return err
+				return con.SaveWordsWithDB()
 			})
 			if err == nil {
 				coo ++

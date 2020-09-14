@@ -1,6 +1,7 @@
 package content
 import(
 	//"time"
+	"io"
 	"sort"
 	"fmt"
 	"crypto/md5"
@@ -459,6 +460,7 @@ func (self *Content) addSame() error {
 			return err
 		}
 		b_,err := t.CreateBucketIfNotExists(chidrenDB)
+
 		if err != nil {
 			return err
 		}
@@ -473,6 +475,48 @@ func (self *Content) addSame() error {
 			return b_.Put(self.parentId,v)
 		}
 	})
+
+}
+
+func (self *Content) UpdateInfo() (err error) {
+	if self.Type == 2 {
+		err = self.SaveWithDB(false,func(c_ *Content,b *bolt.Bucket)error{
+			if strings.EqualFold(self.Content,c_.Content) {
+				return io.EOF
+			}
+			fmt.Println(self.Title,c_.Title)
+			err := self.Savedb(b)
+			if err != nil {
+				return err
+			}
+			GetWordsKey(self.Title,func(w string){
+				self.SetWord(append(self.GetWords(),w))
+			})
+			err = self.AddSame()
+			if err != nil {
+				return err
+			}
+			err = self.SaveWordsWithDB()
+			if err != nil {
+				return err
+			}
+			return io.EOF
+		})
+		if err != nil {
+			return err
+		}
+
+	}else{
+		err = self.SaveWithDB(false,nil)
+		if err != nil {
+			return err
+		}
+	}
+	err = self.AddSame()
+	if err != nil {
+		return err
+	}
+	return self.SaveWordsWithDB()
 
 }
 func (self *Content) SetWord(w []string) {

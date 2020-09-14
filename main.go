@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"flag"
 	"strings"
+	"bytes"
 	"ContentServices/content"
 )
 var (
@@ -19,6 +20,7 @@ var (
 	searchzhihuUrl *url.URL
 	port = flag.String("p","8080","port")
 	Sleep = flag.Int("s",600,"port")
+	addr = flag.String("a","http://127.0.0.1:8080","addr")
 )
 func NewContentZhihu(t,c,a string) (co *content.Content,err error) {
 	co = &content.Content{
@@ -127,20 +129,11 @@ func searchZhihu(word string,h func(interface{}))error{
 			if err != nil {
 				fmt.Println(err)
 			}
-			err = c.SaveWithDB(false,nil)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			err = c.AddSame()
+			err = PostUpdate(c)
 			if err != nil {
 				fmt.Println(err)
 			}
-			//fmt.Println(c.showId(),c.words)
-			err = c.SaveWordsWithDB()
-			if err != nil {
-				fmt.Println(err)
-			}
+
 			h(c)
 		}
 		//h(db)
@@ -170,7 +163,27 @@ func hotZhihu(h func(interface{}))error{
 	})
 }
 
-func run()error{
+func PostUpdate(c *content.Content)error{
+
+	var buf bytes.Buffer
+	err := json.NewEncoder(buf).Encode(c)
+	if err != nil {
+		return err
+	}
+	res,err := http.Post(*addr,"application/json",buf)
+	if err != nil {
+		return err
+	}
+	db,err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(db))
+	return nil
+
+}
+
+func run() error {
 	//fmt.Println("ok")
 	err := initZhihu()
 	if err != nil {
@@ -187,9 +200,34 @@ func run()error{
 	})
 
 }
+func runR() error {
+	for page:=1;;page++{
+		coo := 0
+		err := getPageList(page,func(name,uri string)error{
+			err :=  getPage(uri,func(c interface{})error{
+				con := c.(*content.Content)
+				con.Title = name
+				//fmt.Println(con.Title)
+				return PostUpdate(con)
+			})
+			if err == nil {
+				coo ++
+			}
+			return nil
+		})
+		if err != nil  && err != io.EOF {
+			fmt.Println("end",err)
+			return err
+		}
+		if coo==0{
+			return nil
+		}
+		//return err
+	}
+	return nil
 
 
-
+}
 
 func main (){
 	select{}
