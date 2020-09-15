@@ -347,7 +347,8 @@ func (self *Content) saveWithDB(isupdate bool,h func(*Content,*bolt.Bucket)error
 					}
 					return h(con,b)
 				}
-				return fmt.Errorf("is same")
+				return io.EOF
+				//return fmt.Errorf("is same")
 			}
 		}
 		return self.savedb(b)
@@ -514,7 +515,8 @@ func (self *Content) UpdateInfo() (err error) {
 	}
 	err = self.AddSame()
 	if err != nil {
-		return err
+		fmt.Println(err)
+		//return err
 	}
 	return self.SaveWordsWithDB()
 
@@ -523,6 +525,7 @@ func (self *Content) SetWord(w []string) {
 	self.words = w
 }
 func (self *Content) SetWords() error {
+
 	if self.Title == "" {
 		return fmt.Errorf("title is nil")
 	}
@@ -538,15 +541,29 @@ func (self *Content) SetWords() error {
 		}
 	}
 	//self.Content = clearHerf(self.Content)
-
 	for _,t := range regT.FindAllString(clearHerf(self.Content),-1){
 		if len(t)>2 {
 			newTi = append(newTi,t)
 		}
 	}
 	self.words = split_(newTi)
-
 	return nil
+
+}
+func (self *Content) ToMap()(m map[string]interface{}) {
+	m = map[string]interface{}{}
+	m["Title"] = self.Title
+	m["Content"] = self.Content
+	m["Author"] = self.Author
+	m["Site"] = self.Site
+	m["Update"] = self.Update
+	m["Type"] = self.Type
+	m["id"] = self.id
+	m["words"] = self.words
+	m["parentId"] = self.parentId
+	m["children"] = self.children
+	return m
+
 }
 
 func clearHerf(db string) string {

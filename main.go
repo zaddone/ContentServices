@@ -2,6 +2,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"sort"
 	"time"
 	"io/ioutil"
 	"net/url"
@@ -10,9 +11,13 @@ import (
 	"github.com/zaddone/studySystem/request"
 	"github.com/lunny/html2md"
 	"github.com/gin-gonic/gin"
+	"github.com/PuerkitoBio/goquery"
+	//"github.com/boltdb/bolt"
 	"flag"
 	"strings"
 	"bytes"
+	"regexp"
+	//"reflect"
 	"ContentServices/content"
 )
 var (
@@ -20,7 +25,14 @@ var (
 	searchzhihuUrl *url.URL
 	port = flag.String("p","8080","port")
 	Sleep = flag.Int("s",600,"port")
-	addr = flag.String("a","http://127.0.0.1:8080","addr")
+	addr = flag.String("a","http://127.0.0.1:8080/update","addr")
+
+	regG = regexp.MustCompile("解说|福利|色情")
+	regM = regexp.MustCompile(`[0-9]+`)
+	regS = regexp.MustCompile(`\S+\$\S+\.m3u8`)
+
+	regT *regexp.Regexp = regexp.MustCompile(`[0-9|a-z|A-Z|\p{Han}]+`)
+	regK *regexp.Regexp = regexp.MustCompile(`[0-9a-zA-Z]+|\p{Han}`)
 )
 func NewContentZhihu(t,c,a string) (co *content.Content,err error) {
 	co = &content.Content{
@@ -37,6 +49,66 @@ func NewContentZhihu(t,c,a string) (co *content.Content,err error) {
 	}
 	co.SetId(strings.Join(co.GetWords(),""))
 	return
+}
+func NewContentZyw(t,c string,w []string) (co *content.Content) {
+	co = &content.Content{
+		Title:t,
+		Content:c,
+		Site:"video",
+		Type:2,
+		Update:time.Now().Unix(),
+		//words:w,
+	}
+	co.SetWord(w)
+	co.SetId(strings.Join(co.GetWords(),""))
+	return
+
+}
+func getPage_okzyw(url string,h func(interface{}) error )error{
+
+	res,err := http.Get("http://okzyw.com"+url)
+	if err != nil {
+		return err
+	}
+	doc,err := goquery.NewDocumentFromReader(res.Body)
+	res.Body.Close()
+	if err != nil {
+		return err
+	}
+	Title := doc.Find(".vodInfo .vodh h2").Text()
+	keyMap := map[string]bool{}
+	//getTitleKey(Title,func(w string){
+	//	keyMap[w]=true
+	//})
+	ts := regT.FindAllString(Title,-1)
+	//self.Title = strings.Join(ts," ")
+	for _,l := range ts{
+		keyMap[l]=true
+	}
+	doc.Find(".vodinfobox li span").Each(func(i int,s *goquery.Selection){
+		for _,l := range regT.FindAllString(s.Text(),-1){
+			kl := regM.ReplaceAllString(l,"")
+			if len(kl) ==0 {
+				continue
+			}
+			keyMap[l]=true
+		}
+	})
+	key :=make([]string,0,len(keyMap))
+	for k,_:= range keyMap {
+		key=append(key,k)
+	}
+	sort.Strings(key)
+	//fmt.Println(self.key)
+	tt := doc.Find(".ibox.playBox .vodplayinfo").Text()
+	vod := regS.FindAllString(tt,-1)
+	if len(vod) == 0 {
+		//fmt.Println(tt)
+		return fmt.Errorf("find Not vod")
+	}
+	cont := NewContentZyw(Title,strings.Join(vod,"|"),key)
+	return h(cont)
+
 }
 
 func init(){
@@ -67,7 +139,7 @@ func init(){
 				fmt.Println(err)
 			}
 
-			err = runRead()
+			err = runR()
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -163,16 +235,19 @@ func hotZhihu(h func(interface{}))error{
 	})
 }
 
+
 func PostUpdate(c *content.Content)error{
 
-	var buf bytes.Buffer
-	err := json.NewEncoder(buf).Encode(c)
+	buf,err := json.Marshal(c.ToMap())
 	if err != nil {
 		return err
 	}
-	res,err := http.Post(*addr,"application/json",buf)
+	res,err := http.Post(*addr,"application/json",bytes.NewReader(buf))
 	if err != nil {
 		return err
+	}
+	if res.StatusCode != 200 {
+		return fmt.Errorf(res.Status)
 	}
 	db,err := ioutil.ReadAll(res.Body)
 	if err != nil {
@@ -190,7 +265,7 @@ func run() error {
 		return err
 	}
 	return hotZhihu(func(words interface{}){
-		fmt.Println(words)
+		//fmt.Println(words)
 		err :=  searchZhihu(words.(string),func(db interface{}){
 			fmt.Println(db.(*content.Content).Title)
 		})
@@ -200,11 +275,54 @@ func run() error {
 	})
 
 }
+
+func getPageList_okzyw(page int,readPage func(string,string)error)error{
+	res,err := http.Get(fmt.Sprintf("http://okzyw.com/?m=vod-index-pg-%d.html",page))
+	if err != nil {
+		return err
+	}
+	doc,err := goquery.NewDocumentFromReader(res.Body)
+	res.Body.Close()
+	if err != nil {
+		return err
+	}
+	doc.Find(".xing_vb li").EachWithBreak(func(i int,s *goquery.Selection)bool {
+		if regG.MatchString(s.Find("span.xing_vb5").Text()){
+			//fmt.Println(s.Find("span.xing_vb4").Text())
+			return true
+		}
+		title :=s.Find("span.xing_vb4 a")
+		name := regexp.MustCompile(`\s`).ReplaceAllString(title.Text(),"")
+		//fmt.Println(name)
+		val,ok := title.Attr("href")
+		if !ok{
+			return true
+		}
+		//strup := s.Find("span.xing_vb6").Text()
+		//if strup=="" {
+		//	strup = s.Find("span.xing_vb7").Text()
+		//	if strup == "" {
+		//		return true
+		//	}
+		//}
+		err = readPage(name,val)
+		if err != nil {
+			return false
+			//if err == io.EOF {
+			//	return false
+			//}
+			fmt.Println(err)
+		}
+		return true
+	})
+	return err
+
+}
 func runR() error {
 	for page:=1;;page++{
 		coo := 0
-		err := getPageList(page,func(name,uri string)error{
-			err :=  getPage(uri,func(c interface{})error{
+		err := getPageList_okzyw(page,func(name,uri string)error{
+			err :=  getPage_okzyw(uri,func(c interface{})error{
 				con := c.(*content.Content)
 				con.Title = name
 				//fmt.Println(con.Title)

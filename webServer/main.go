@@ -1,6 +1,7 @@
 package main
 import(
 	"fmt"
+	//"io"
 	"time"
 	"github.com/gin-gonic/gin"
 	"flag"
@@ -16,21 +17,25 @@ var (
 )
 func init(){
 	flag.Parse()
-	Router.Static("/static","./static")
-	Router.LoadHTMLGlob("./templates/*")
+	//Router.Static("/static","./static")
+	//Router.LoadHTMLGlob("./templates/*")
 
 	Router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK,gin.H{"msg":"success"})
 	})
 	Router.POST("/update", func(c *gin.Context) {
-		var db interface{}
+		var db map[string]interface{}
 		err := json.NewDecoder(c.Request.Body).Decode(&db)
 		c.Request.Body.Close()
 		if err != nil {
+			//panic(err)
+			fmt.Println(err)
 			c.JSON(http.StatusNotFound,err)
 			return
 		}
+		//fmt.Println(db)
 		con := NewContent(db)
+		fmt.Println(con)
 		err = con.UpdateInfo()
 		if err != nil {
 			c.JSON(http.StatusNotFound,err)
@@ -55,8 +60,8 @@ func init(){
 }
 
 func NewContent(db interface{}) (c *content.Content) {
-
-	mdb := map[string]interface{}{}
+	//fmt.Println(db)
+	mdb := db.(map[string]interface{})
 	c = &content.Content{
 		Title:mdb["Title"].(string),
 		Content:mdb["Content"].(string),
@@ -67,7 +72,12 @@ func NewContent(db interface{}) (c *content.Content) {
 		//words:mdb["words"].([]string),
 	}
 	if mdb["words"] != nil {
-		c.SetWord(mdb["words"].([]string))
+		words := mdb["words"].([]interface{})
+		ws:=make([]string,0,len(words))
+		for _,w := range words {
+			ws = append(ws,w.(string))
+		}
+		c.SetWord(ws)
 	}else{
 		c.SetWords()
 	}
