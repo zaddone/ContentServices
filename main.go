@@ -25,7 +25,7 @@ var (
 	searchzhihuUrl *url.URL
 	port = flag.String("p","8080","port")
 	Sleep = flag.Int("s",600,"port")
-	addr = flag.String("a","http://127.0.0.1:8080/update","addr")
+	addr = flag.String("a","http://127.0.0.1:8080","addr")
 
 	regG = regexp.MustCompile("解说|福利|色情")
 	regM = regexp.MustCompile(`[0-9]+`)
@@ -143,7 +143,7 @@ func init(){
 			if err != nil {
 				fmt.Println(err)
 			}
-			res,err := http.Get("http://127.0.0.1:8080/syncwx")
+			res,err := http.Get(*addr+"/syncwx")
 			if err != nil {
 				fmt.Println(err)
 			}else{
@@ -247,7 +247,7 @@ func PostUpdate(c *content.Content)error{
 	if err != nil {
 		return err
 	}
-	res,err := http.Post(*addr,"application/json",bytes.NewReader(buf))
+	res,err := http.Post(*addr+"/update","application/json",bytes.NewReader(buf))
 	if err != nil {
 		return err
 	}
