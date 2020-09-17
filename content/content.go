@@ -1,11 +1,13 @@
 package content
 import(
 	//"time"
+	"os"
 	"io"
 	"sort"
 	"fmt"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/gob"
 	"bytes"
 	"strings"
@@ -19,6 +21,7 @@ var (
 	ContentDB = "Page.db"
 	wordsFileDB = "words.db"
 	linkFileDB = "link.db"
+	tmpFileDB = "tmp.db"
 	pageDB = []byte("list")
 	wordDB = []byte("word")
 	parentDB = []byte("parent")
@@ -478,12 +481,110 @@ func (self *Content) addSame() error {
 	})
 
 }
+func ClearTmpDB() (err error) {
+	return os.Remove(tmpFileDB)
+}
+
+func ReadTmpAll(conh,wordh func(io.Reader))error{
+
+	var cons,words  [][]byte
+
+	return openDB(tmpFileDB,false,func(t *bolt.Tx)error{
+		b := t.Bucket([]byte("tmpid"))
+		if b == nil {
+			return nil
+		}
+		err :=  openDB(ContentDB,false,func(t_ *bolt.Tx)error{
+			b_ := t_.Bucket(pageDB)
+			if b_ == nil {
+				return nil
+			}
+			return b.ForEach(func(k,_ []byte)error{
+				v := b_.Get(k)
+				con := &Content{id:k}
+				con.Load(v)
+				db,err := json.Marshal(con.ToMapWX())
+				if err != nil {
+					return err
+				}
+				cons = append(cons,db)
+				return nil
+			})
+		})
+		if err != nil {
+			return err
+		}
+		conh(bytes.NewReader(bytes.Join(cons,[]byte{'\n'})))
+		//return nil
+		_b := t.Bucket([]byte("tmpWords"))
+		if _b == nil {
+			return nil
+		}
+		err = openDB(wordsFileDB,false,func(t_ *bolt.Tx)error{
+			b_ := t_.Bucket(wordDB)
+			if b_ == nil {
+				return nil
+			}
+			return _b.ForEach(func(k,_ []byte)error{
+				v := b_.Get(k)
+				mdb := map[string]interface{}{}
+				mdb["_id"] = string(k)
+				str:=make([]string,0,len(v)/16)
+				var i,I int
+				for i=0;i<len(v);i = I{
+					I = i+16
+					str = append(str,fmt.Sprintf("%x",v[i:I]))
+				}
+				mdb["link"] = str
+				db,err := json.Marshal(mdb)
+				if err != nil {
+					return err
+				}
+				words = append(words,db)
+				//wordh(db)
+				return nil
+			})
+		})
+		if err != nil {
+			return err
+		}
+		wordh(bytes.NewReader(bytes.Join(words,[]byte{'\n'})))
+		return nil
+	})
+
+}
+func (self *Content) UpdateTmp() (err error) {
+	return openDB(tmpFileDB,true,func(t *bolt.Tx)error{
+		b,err := t.CreateBucketIfNotExists([]byte("tmpid"))
+		if err != nil {
+			return err
+		}
+		err = b.Put(self.id,[]byte{'0'})
+		if err != nil {
+			return err
+		}
+		if len(self.parentId)>0 {
+			err = b.Put(self.id,[]byte{'0'})
+			if err != nil {
+				return err
+			}
+		}
+		b,err = t.CreateBucketIfNotExists([]byte("tmpWords"))
+		for _,w := range self.words {
+			err = b.Put([]byte(w),[]byte{'0'})
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+		return nil
+	})
+}
 
 func (self *Content) UpdateInfo() (err error) {
 	if self.Type == 2 {
 		err = self.SaveWithDB(false,func(c_ *Content,b *bolt.Bucket)error{
 			if strings.EqualFold(self.Content,c_.Content) {
-				return io.EOF
+				return fmt.Errorf("is same")
 			}
 			fmt.Println(self.Title,c_.Title)
 			err := self.Savedb(b)
@@ -504,6 +605,9 @@ func (self *Content) UpdateInfo() (err error) {
 			return io.EOF
 		})
 		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
 			return err
 		}
 
@@ -550,6 +654,22 @@ func (self *Content) SetWords() error {
 	return nil
 
 }
+func (self *Content) ToMapWX()(m map[string]interface{}) {
+	m = map[string]interface{}{}
+	m["Title"] = self.Title
+	m["Content"] = self.Content
+	m["Author"] = self.Author
+	m["Site"] = self.Site
+	m["Update"] = self.Update
+	m["Type"] = self.Type
+	m["_id"] = self.showId()
+	//m["words"] = self.words
+	//m["parentId"] = self.parentId
+	//m["children"] = self.children
+	return m
+
+}
+
 func (self *Content) ToMap()(m map[string]interface{}) {
 	m = map[string]interface{}{}
 	m["Title"] = self.Title

@@ -112,7 +112,7 @@ func getPage_okzyw(url string,h func(interface{}) error )error{
 }
 
 func init(){
-	//flag.Parse()
+	flag.Parse()
 	var err error
 	searchzhihuUrl,err = url.Parse("https://api.zhihu.com/search_v3?advert_count=0&correction=1&lc_idx=0&limit=20&offset=20&q=%E5%9B%B4%E6%A3%8B&show_all_topics=0&t=general")
 	if err != nil {
@@ -143,7 +143,12 @@ func init(){
 			if err != nil {
 				fmt.Println(err)
 			}
-
+			res,err := http.Get("http://127.0.0.1:8080/syncwx")
+			if err != nil {
+				fmt.Println(err)
+			}else{
+				fmt.Println(res.Status)
+			}
 			time.Sleep(time.Hour*1)
 		}
 	}()

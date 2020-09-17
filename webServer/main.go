@@ -1,7 +1,7 @@
 package main
 import(
 	"fmt"
-	//"io"
+	"io"
 	"time"
 	"github.com/gin-gonic/gin"
 	"flag"
@@ -10,18 +10,59 @@ import(
 	"strings"
 	//"io/ioutil"
 	"ContentServices/content"
+	"ContentServices/wxmsgb"
+	"sync"
+	//"os"
 )
 var (
 	Router  = gin.Default()
 	port = flag.String("p","8080","port")
+	//writerChan = make(chan *content.Content,100)
+	//TmpUpdateForWX = "tmpWX.db"
+	appid = flag.String("appid","wx92ebd09c7b0d944f","appid")
+	sec = flag.String("sec","b3005d3c298e27b60ee1f90d188a9d86","sec")
+	env = flag.String("env","guomi-2i7wu","env")
 )
+func uploadWX() (err error){
+	var wi sync.WaitGroup
+	err = content.ReadTmpAll(
+		func(c io.Reader){
+			wi.Add(1)
+			go func(){
+				err := wxmsgb.UploadWX("content",c)
+				if err != nil {
+					fmt.Println(err)
+				}
+				wi.Done()
+			}()
+		},
+		func(w io.Reader){
+			wi.Add(1)
+			go func(){
+				err := wxmsgb.UploadWX("keywords",w)
+				if err != nil {
+					fmt.Println(err)
+				}
+				wi.Done()
+			}()
+		},
+	)
+	wi.Wait()
+	return content.ClearTmpDB()
+
+}
+
 func init(){
 	flag.Parse()
+	wxmsgb.Reload(*appid,*sec,*env)
 	//Router.Static("/static","./static")
 	//Router.LoadHTMLGlob("./templates/*")
 
 	Router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK,gin.H{"msg":"success"})
+	})
+	Router.GET("/syncwx", func(c *gin.Context) {
+		c.JSON(http.StatusOK,gin.H{"msg":uploadWX()})
 	})
 	Router.POST("/update", func(c *gin.Context) {
 		var db map[string]interface{}
@@ -35,11 +76,15 @@ func init(){
 		}
 		//fmt.Println(db)
 		con := NewContent(db)
-		fmt.Println(con)
+		//fmt.Println(con)
 		err = con.UpdateInfo()
 		if err != nil {
 			c.JSON(http.StatusNotFound,err)
 			return
+		}
+		err = con.UpdateTmp()
+		if err != nil {
+			fmt.Println(err)
 		}
 		c.JSON(http.StatusOK,con)
 		return
