@@ -23,14 +23,16 @@ var (
 	sec = flag.String("sec","b3005d3c298e27b60ee1f90d188a9d86","sec")
 	env = flag.String("env","guomi-2i7wu","env")
 )
-func uploadWX() (err error){
+func uploadWXAll() (err error){
 	var wi sync.WaitGroup
-	err = content.ReadTmpAll(
+	errchan := make(chan error,3)
+	err = content.ReadAllDB(
 		func(c io.Reader){
 			wi.Add(1)
 			go func(){
 				err := wxmsgb.UploadWX("content",c)
 				if err != nil {
+					errchan<-err
 					fmt.Println(err)
 				}
 				wi.Done()
@@ -41,14 +43,87 @@ func uploadWX() (err error){
 			go func(){
 				err := wxmsgb.UploadWX("keywords",w)
 				if err != nil {
+					errchan<-err
+					fmt.Println(err)
+				}
+				wi.Done()
+			}()
+		},
+		func(ch io.Reader){
+			wi.Add(1)
+			go func(){
+				err := wxmsgb.UploadWX("links",ch)
+				if err != nil {
+					errchan<-err
 					fmt.Println(err)
 				}
 				wi.Done()
 			}()
 		},
 	)
+	if err != nil {
+		return err
+	}
 	wi.Wait()
-	return content.ClearTmpDB()
+	close(errchan)
+	select{
+	case err = <-errchan:
+		return err
+	default:
+		return nil
+	}
+}
+func uploadWX() (err error){
+	var wi sync.WaitGroup
+	errchan := make(chan error,3)
+	err = content.ReadTmpAll(
+		func(c io.Reader){
+			wi.Add(1)
+			go func(){
+				err := wxmsgb.UploadWX("content",c)
+				if err != nil {
+					errchan<-err
+					fmt.Println(err)
+				}
+				wi.Done()
+			}()
+		},
+		func(w io.Reader){
+			wi.Add(1)
+			go func(){
+				err := wxmsgb.UploadWX("keywords",w)
+				if err != nil {
+					errchan<-err
+					fmt.Println(err)
+				}
+				wi.Done()
+			}()
+		},
+		func(ch io.Reader){
+			wi.Add(1)
+			go func(){
+				err := wxmsgb.UploadWX("links",ch)
+				if err != nil {
+					errchan<-err
+					fmt.Println(err)
+				}
+				wi.Done()
+			}()
+		},
+	)
+	if err != nil {
+		return err
+	}
+	wi.Wait()
+	close(errchan)
+	select{
+	case err = <-errchan:
+		return err
+	default:
+		return content.ClearTmpDB()
+	}
+	//return nil
+	//return content.ClearTmpDB()
 
 }
 
@@ -61,8 +136,19 @@ func init(){
 	Router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK,gin.H{"msg":"success"})
 	})
+	Router.GET("/syncall", func(c *gin.Context) {
+		err := uploadWXAll()
+		if err != nil {
+			fmt.Println(err)
+		}
+		c.JSON(http.StatusOK,gin.H{"msg":err})
+	})
 	Router.GET("/syncwx", func(c *gin.Context) {
-		c.JSON(http.StatusOK,gin.H{"msg":uploadWX()})
+		err := uploadWX()
+		if err != nil {
+			fmt.Println(err)
+		}
+		c.JSON(http.StatusOK,gin.H{"msg":err})
 	})
 	Router.POST("/update", func(c *gin.Context) {
 		var db map[string]interface{}

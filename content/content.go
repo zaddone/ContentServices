@@ -22,8 +22,13 @@ var (
 	wordsFileDB = "words.db"
 	linkFileDB = "link.db"
 	tmpFileDB = "tmp.db"
+	tmpid = []byte("tmpid")
+	tmpWords = []byte("tmpWords")
+	tmplink = []byte("tmplink")
+
 	pageDB = []byte("list")
 	wordDB = []byte("word")
+
 	parentDB = []byte("parent")
 	chidrenDB = []byte("chidren")
 
@@ -481,43 +486,175 @@ func (self *Content) addSame() error {
 	})
 
 }
+
 func ClearTmpDB() (err error) {
 	return os.Remove(tmpFileDB)
 }
 
-func ReadTmpAll(conh,wordh func(io.Reader))error{
+func ReadAllDB(conh,wordh,child func(io.Reader))error{
+	var cons,words,ch  [][]byte
 
-	var cons,words  [][]byte
-
-	return openDB(tmpFileDB,false,func(t *bolt.Tx)error{
-		b := t.Bucket([]byte("tmpid"))
-		if b == nil {
+	err := openDB(linkFileDB,false,func(lt *bolt.Tx)error{
+		pb := lt.Bucket(parentDB)
+		if pb == nil {
 			return nil
+		}
+		cb := lt.Bucket(chidrenDB)
+		if cb == nil {
+			return nil
+		}
+		err :=  cb.ForEach(func(k,v []byte)error{
+			mdb := map[string]interface{}{}
+			mdb["_id"] = fmt.Sprintf("%x",k)
+			str:=make([]string,0,len(v)/16)
+			var i,I int
+			for i=0;i<len(v);i = I{
+				I = i+16
+				str = append(str,fmt.Sprintf("%x",v[i:I]))
+			}
+			mdb["link"] = str
+			db_,err := json.Marshal(mdb)
+			if err != nil {
+				return err
+			}
+			ch = append(ch,db_)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		if len(ch)>0{
+			child(bytes.NewReader(bytes.Join(ch,[]byte{'\n'})))
+		}
+		return openDB(ContentDB,false,func(t_ *bolt.Tx)error{
+		bc := t_.Bucket(pageDB)
+		if bc == nil {
+			return nil
+		}
+
+		err = bc.ForEach(func(k,v []byte)error{
+			con := &Content{id:k}
+			con.Load(v)
+			con.parentId = pb.Get(k)
+			db,err := json.Marshal(con.ToMapWX())
+			if err != nil {
+				return err
+			}
+			cons = append(cons,db)
+			return nil
+
+			//children := cb.Get(k)
+
+		})
+		if err != nil {
+			return err
+		}
+		if len(cons)>0{
+		conh(bytes.NewReader(bytes.Join(cons,[]byte{'\n'})))
+		}
+		return nil
+
+		})
+	})
+	if err != nil {
+		return err
+	}
+	return  openDB(wordsFileDB,false,func(t_ *bolt.Tx)error{
+		b_ := t_.Bucket(wordDB)
+		if b_ == nil {
+			return nil
+		}
+		err := b_.ForEach(func(k,v []byte)error{
+			mdb := map[string]interface{}{}
+			mdb["_id"] = string(k)
+			str:=make([]string,0,len(v)/16)
+			var i,I int
+			for i=0;i<len(v);i = I{
+				I = i+16
+				str = append(str,fmt.Sprintf("%x",v[i:I]))
+			}
+			mdb["link"] = str
+			db,err := json.Marshal(mdb)
+			if err != nil {
+				return err
+			}
+			words = append(words,db)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		if len(words)>0{
+			wordh(bytes.NewReader(bytes.Join(words,[]byte{'\n'})))
+		}
+		return nil
+
+	})
+}
+
+func ReadTmpAll(conh,wordh,child func(io.Reader))error{
+	var cons,words,ch  [][]byte
+	return openDB(tmpFileDB,false,func(t *bolt.Tx)error{
+		b := t.Bucket(tmpid)
+		if b == nil {
+			return fmt.Errorf("tmpid is nil")
 		}
 		err :=  openDB(ContentDB,false,func(t_ *bolt.Tx)error{
 			b_ := t_.Bucket(pageDB)
 			if b_ == nil {
 				return nil
 			}
-			return b.ForEach(func(k,_ []byte)error{
+			return openDB(linkFileDB,false,func(lt *bolt.Tx)error{
+			lb := lt.Bucket(chidrenDB)
+			if lb == nil {
+				return nil
+			}
+			return b.ForEach(func(k,_v []byte)error{
 				v := b_.Get(k)
-				con := &Content{id:k}
+				con := &Content{id:k,parentId:_v}
 				con.Load(v)
 				db,err := json.Marshal(con.ToMapWX())
 				if err != nil {
 					return err
 				}
 				cons = append(cons,db)
+				lv := lb.Get(_v)
+				if lv == nil {
+					return nil
+				}
+				mdb := map[string]interface{}{}
+				mdb["_id"] = fmt.Sprintf("%x",_v)
+				str:=make([]string,0,len(lv)/16)
+				var i,I int
+				for i=0;i<len(lv);i = I{
+					I = i+16
+					str = append(str,fmt.Sprintf("%x",lv[i:I]))
+				}
+				mdb["link"] = str
+				db_,err := json.Marshal(mdb)
+				if err != nil {
+					return err
+				}
+				ch = append(ch,db_)
+
+
 				return nil
+			})
 			})
 		})
 		if err != nil {
 			return err
 		}
+		if len(cons)>0{
 		conh(bytes.NewReader(bytes.Join(cons,[]byte{'\n'})))
+		}
+		if len(ch)>0{
+		child(bytes.NewReader(bytes.Join(ch,[]byte{'\n'})))
+		}
 		//return nil
-		_b := t.Bucket([]byte("tmpWords"))
+		_b := t.Bucket(tmpWords)
 		if _b == nil {
+			return fmt.Errorf("words is nil")
 			return nil
 		}
 		err = openDB(wordsFileDB,false,func(t_ *bolt.Tx)error{
@@ -548,28 +685,28 @@ func ReadTmpAll(conh,wordh func(io.Reader))error{
 		if err != nil {
 			return err
 		}
-		wordh(bytes.NewReader(bytes.Join(words,[]byte{'\n'})))
+		if len(words)>0{
+			wordh(bytes.NewReader(bytes.Join(words,[]byte{'\n'})))
+		}
 		return nil
 	})
 
 }
 func (self *Content) UpdateTmp() (err error) {
 	return openDB(tmpFileDB,true,func(t *bolt.Tx)error{
-		b,err := t.CreateBucketIfNotExists([]byte("tmpid"))
+		b,err := t.CreateBucketIfNotExists(tmpid)
 		if err != nil {
 			return err
 		}
-		err = b.Put(self.id,[]byte{'0'})
+		if len(self.parentId)==0 {
+			self.parentId = []byte{0}
+		}
+		err = b.Put(self.id,self.parentId)
 		if err != nil {
 			return err
 		}
-		if len(self.parentId)>0 {
-			err = b.Put(self.id,[]byte{'0'})
-			if err != nil {
-				return err
-			}
-		}
-		b,err = t.CreateBucketIfNotExists([]byte("tmpWords"))
+
+		b,err = t.CreateBucketIfNotExists(tmpWords)
 		for _,w := range self.words {
 			err = b.Put([]byte(w),[]byte{'0'})
 			if err != nil {
@@ -664,7 +801,7 @@ func (self *Content) ToMapWX()(m map[string]interface{}) {
 	m["Type"] = self.Type
 	m["_id"] = self.showId()
 	//m["words"] = self.words
-	//m["parentId"] = self.parentId
+	m["parentId"] = fmt.Sprintf("%x",self.parentId)
 	//m["children"] = self.children
 	return m
 

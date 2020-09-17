@@ -153,7 +153,7 @@ func DBDelete(coll string, ids []string) error {
 		})
 }
 func UploadWX(coll string,data io.Reader)error{
-	fileName:= fmt.Sprintf("tmp/%d",time.Now().Unix())
+	fileName:= fmt.Sprintf("tmp/%s/%d",coll,time.Now().Unix())
 	//fmt.Println(fileName)
 	var res map[string]interface{}
 	err := PostRequest(
