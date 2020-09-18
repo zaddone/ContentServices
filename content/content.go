@@ -102,37 +102,23 @@ func searchWithWords(k string,searchMax int,h func(interface{})) error {
 			}
 		}
 	}
-	fmt.Println(key)
-
 	ids := map[string]float64{}
-	//var keys []string
 	err := openDB(wordsFileDB,false,func(t *bolt.Tx)error{
 		b:= t.Bucket(wordDB)
 		if b == nil {
 			return fmt.Errorf("bucket is nil")
 		}
-		for _i,k := range key {
-			if len(k) == 0 {
-				continue
-			}
+		for _,k := range key {
 			v := b.Get([]byte(k))
 			if v == nil {
 				continue
 			}
-			for _j := _i+1; _j<len(key); _j++{
-				if strings.Contains(k,key[_j]){
-					key[_j]=""
-				}
-			}
-
-			//keys = append(keys,k)
-			le := float64(len(v))
-			v__ := le/16
-			var i float64
-			for i =0;i<le;i+=16 {
-				I := int(i)
-				//ids[fmt.Sprintf("%x",v[I:I+16])] += v__ + (le-i)/le
-				ids[string(v[I:(I+16)])] += v__ + (le-i)/le
+			le := len(v)
+			le_ := float64(le)
+			sum := 16/le_ + float64(len(k))
+			for i,I :=0,0;i<le;i = I {
+				I = i + 16
+				ids[string(v[i:I])] +=  float64(i)/le_ + sum
 			}
 		}
 		return nil
@@ -144,21 +130,37 @@ func searchWithWords(k string,searchMax int,h func(interface{})) error {
 	if len(ids) == 0 {
 		return fmt.Errorf("not words key")
 	}
-	//fmt.Println(keys)
-	getMin := func (m map[string]float64) string {
-		var minid string
-		var minv float64
+	getMax := func (m map[string]float64) (maxid string,maxv float64) {
 		for k,v := range m {
-			if v<minv || minv == 0 {
-				minv = v
-				minid = k
+			if v>maxv{
+				maxv = v
+				maxid = k
 			}
 		}
-		delete(m,minid)
-		//fmt.Println(minv)
-		return minid
+		delete(m,maxid)
+		return
 	}
-	lm := float64(len(ids))
+	if len(ids)>searchMax {
+	return openDB(ContentDB,false,func(t *bolt.Tx)error{
+		b := t.Bucket(pageDB)
+		if b == nil {
+			return fmt.Errorf("page is nil")
+		}
+		for i:=0;i<searchMax;i++ {
+			id,_ := getMax(ids)
+			c := &Content{
+				id:[]byte(id),
+			}
+			e := c.Load(b.Get(c.id))
+			if e != nil {
+				fmt.Println(e)
+				continue
+			}
+			h(c)
+		}
+		return nil
+	})
+	}
 	mlist := make(map[string]float64)
 	err = openDB(linkFileDB,false,func(t *bolt.Tx)error{
 		b := t.Bucket(parentDB)
@@ -166,29 +168,32 @@ func searchWithWords(k string,searchMax int,h func(interface{})) error {
 			return fmt.Errorf("parent is nil")
 		}
 		b_ := t.Bucket(chidrenDB)
-		if b == nil {
+		if b_ == nil {
 			return fmt.Errorf("chidren is nil")
 		}
-		for i:=lm;len(ids)>0;i-- {
-			id_ := getMin(ids)
-			mlist[id_] +=i
-			//par := b.Get(id_)
-			//if len(par) >0 {
-			//	mlist[string(par)] +=1
-			//}
-			chi := b_.Get([]byte(id_))
+		for ;len(ids)>0; {
+			id_,v := getMax(ids)
+			mlist[id_] +=v
+			_id_ := []byte(id_)
+
+			chi := b_.Get(_id_)
+			par := b.Get(_id_)
+			if len(par) >0 {
+				mlist[string(par)] += 0
+				pchi := b_.Get(par)
+				if len(pchi) >0 {
+					chi = append(pchi,chi...)
+				}
+			}
 			chilen := len(chi)
 			if chilen >0 {
 				chilen_ := float64(chilen)
-				for I:=0;I<chilen;{
-					I_ := I + 16
+				for I,I_:=0,0;I<chilen;I = I_{
+					I_ = I + 16
 					mlist[string(chi[I:I_])] += float64(I_)/chilen_
-					I = I_
 				}
 			}
-			if len(mlist)>searchMax {
-				return nil
-			}
+
 
 		}
 		return nil
@@ -207,6 +212,9 @@ func searchWithWords(k string,searchMax int,h func(interface{})) error {
 		intli = append(intli,sobj{k,v})
 		sortSobj(intli,le)
 	}
+	if len(intli) > searchMax {
+		intli = intli[:searchMax]
+	}
 	//fmt.Println(intli)
 	//objlist := make([]interface{},0,len(mlist))
 	return openDB(ContentDB,false,func(t *bolt.Tx)error{
@@ -218,7 +226,7 @@ func searchWithWords(k string,searchMax int,h func(interface{})) error {
 			c := &Content{
 				id:[]byte(l.id),
 			}
-			fmt.Println(l.n)
+			//fmt.Println(l.n)
 			e := c.Load(b.Get(c.id))
 			if e != nil {
 				fmt.Println(e)

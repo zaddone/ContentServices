@@ -211,7 +211,9 @@ func searchZhihu(word string,h func(interface{}))error{
 				fmt.Println(err)
 			}
 
-			h(c)
+			if h != nil {
+				h(c)
+			}
 		}
 		//h(db)
 		return nil
@@ -330,6 +332,10 @@ func runR() error {
 			err :=  getPage_okzyw(uri,func(c interface{})error{
 				con := c.(*content.Content)
 				con.Title = name
+				err := searchZhihu(name,nil)
+				if err != nil {
+					fmt.Println(err)
+				}
 				//fmt.Println(con.Title)
 				return PostUpdate(con)
 			})
